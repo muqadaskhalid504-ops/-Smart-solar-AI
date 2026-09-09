@@ -1,4 +1,4 @@
- import streamlit as st
+import streamlit as st
 
 # Page settings
 st.set_page_config(
