@@ -1,4 +1,4 @@
-import streamlit as st
+ import streamlit as st
 import math
 import pandas as pd
 
@@ -71,6 +71,22 @@ with col2:
         index=2
     )
 
+
+    st.subheader("🔗 PV String Configuration")
+
+    max_panels_per_string = st.number_input(
+        "🔗 Panels per String (Series)",
+        min_value=1,
+        value=10,
+        step=1,
+        help="Number of solar panels connected in series in one PV string."
+    )
+
+    string_configuration = st.selectbox(
+        "⚡ String Arrangement",
+        ["Series strings in parallel", "Single series string"]
+    )
+
 st.divider()
 
 if st.button("🔍 Analyze Solar System", use_container_width=True):
@@ -96,8 +112,31 @@ if st.button("🔍 Analyze Solar System", use_container_width=True):
         solar_size / panel_kw
     )
 
+    # PV string configuration:
+    # - Panels inside each string are connected in SERIES.
+    # - Multiple strings are connected in PARALLEL.
+    # - For the parallel-string option, the prototype keeps the
+    #   number of parallel strings EVEN.
+    if string_configuration == "Series strings in parallel":
+        panels_per_string = int(max_panels_per_string)
+
+        number_of_strings = math.ceil(
+            number_of_panels / panels_per_string
+        )
+
+        if number_of_strings % 2 != 0:
+            number_of_strings += 1
+
+        total_string_panels = number_of_strings * panels_per_string
+
+    else:
+        panels_per_string = number_of_panels
+        number_of_strings = 1
+        total_string_panels = number_of_panels
+
+    # Use the configured string arrangement for installed capacity.
     actual_solar_capacity = round(
-        number_of_panels * panel_kw,
+        total_string_panels * panel_kw,
         2
     )
 
@@ -291,7 +330,7 @@ if st.button("🔍 Analyze Solar System", use_container_width=True):
 
     st.subheader("🔧 System Details")
 
-    d1, d2, d3 = st.columns(3)
+    d1, d2, d3, d4 = st.columns(4)
 
     d1.write(
         f"**Panel Size:** {panel_power} W"
@@ -306,6 +345,26 @@ if st.button("🔍 Analyze Solar System", use_container_width=True):
         f"**Solar Coverage:** "
         f"{solar_coverage}%"
     )
+
+    d4.write(
+        f"**PV Strings:** {number_of_strings}"
+    )
+
+    st.info(
+        f"🔗 **PV String Configuration:** {panels_per_string} panel(s) "
+        f"in series per string × {number_of_strings} string(s) in parallel "
+        f"= {total_string_panels} configured panels."
+    )
+
+    if string_configuration == "Series strings in parallel":
+        st.success(
+            f"✅ Parallel string count: {number_of_strings} (EVEN)"
+        )
+    else:
+        st.info(
+            "ℹ️ Single series string selected; parallel-string even-count "
+            "rule does not apply."
+        )
 
     if roof_status:
         st.success(
@@ -457,6 +516,10 @@ The system can use approximately {number_of_panels} solar panels
 of {panel_power} W each.
 
 A {inverter_size:.2f} kW inverter is recommended.
+
+The PV array is configured as {panels_per_string} panel(s) in series
+per string and {number_of_strings} string(s) in parallel, giving
+{total_string_panels} configured panels.
 
 {battery_text}
 
