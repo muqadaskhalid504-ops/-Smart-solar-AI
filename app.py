@@ -22,7 +22,7 @@ st.header("🔹 Enter Your Information")
 col1, col2 = st.columns(2)
 
 with col1:
-    location = st.text_input("📍 Location", "Mianwali")
+    location = st.text_input("📍 Location")
 
     monthly_units = st.number_input(
         "⚡ Monthly Electricity Consumption (kWh)",
