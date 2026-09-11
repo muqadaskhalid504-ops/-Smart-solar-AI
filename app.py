@@ -1,4 +1,4 @@
-import streamlit as st
+ import streamlit as st
 import math
 import pandas as pd
 
@@ -12,7 +12,8 @@ st.title("☀️ Smart Solar AI")
 
 st.write(
     "AI-powered solar energy assistant for solar system sizing, "
-    "battery, inverter, savings, payback and CO₂ reduction."
+    "battery, inverter, savings, payback, CO₂ reduction and "
+    "automatic solar string configuration."
 )
 
 st.divider()
@@ -22,7 +23,11 @@ st.header("🔹 Enter Your Information")
 col1, col2 = st.columns(2)
 
 with col1:
-    location = st.text_input("📍 Location")
+
+    location = st.text_input(
+        "📍 Location",
+        value="Mianwali"
+    )
 
     monthly_units = st.number_input(
         "⚡ Monthly Electricity Consumption (kWh)",
@@ -46,6 +51,7 @@ with col1:
     )
 
 with col2:
+
     backup_hours = st.number_input(
         "🔋 Required Battery Backup (hours)",
         min_value=0.0,
@@ -72,32 +78,31 @@ with col2:
     )
 
 
-    st.subheader("🔗 PV String Configuration")
-
-    max_panels_per_string = st.number_input(
-        "🔗 Panels per String (Series)",
-        min_value=1,
-        value=10,
-        step=1,
-        help="Number of solar panels connected in series in one PV string."
-    )
-
-    string_configuration = st.selectbox(
-        "⚡ String Arrangement",
-        ["Series strings in parallel", "Single series string"]
-    )
-
 st.divider()
 
-if st.button("🔍 Analyze Solar System", use_container_width=True):
+
+if st.button(
+    "🔍 Analyze Solar System",
+    use_container_width=True
+):
 
     if monthly_units <= 0:
-        st.error("Please enter monthly electricity consumption greater than 0.")
+
+        st.error(
+            "Please enter monthly electricity consumption greater than 0."
+        )
+
         st.stop()
+
+
+    # =========================================================
+    # 1. BASIC SOLAR CALCULATION
+    # =========================================================
 
     daily_consumption = monthly_units / 30
 
     peak_sun_hours = 4.5
+
     performance_ratio = 0.80
 
     solar_size = daily_consumption / (
@@ -106,39 +111,95 @@ if st.button("🔍 Analyze Solar System", use_container_width=True):
 
     solar_size = round(solar_size, 2)
 
+
+    # =========================================================
+    # 2. SOLAR PANEL CALCULATION
+    # =========================================================
+
     panel_kw = panel_power / 1000
 
-    number_of_panels = math.ceil(
+    initial_panel_count = math.ceil(
         solar_size / panel_kw
     )
 
-    # PV string configuration:
-    # - Panels inside each string are connected in SERIES.
-    # - Multiple strings are connected in PARALLEL.
-    # - For the parallel-string option, the prototype keeps the
-    #   number of parallel strings EVEN.
-    if string_configuration == "Series strings in parallel":
-        panels_per_string = int(max_panels_per_string)
 
-        number_of_strings = math.ceil(
-            number_of_panels / panels_per_string
-        )
+    # =========================================================
+    # 3. AUTOMATIC STRING CONFIGURATION
+    # =========================================================
 
-        if number_of_strings % 2 != 0:
-            number_of_strings += 1
+    # We want an even total number of panels
+    if initial_panel_count % 2 != 0:
 
-        total_string_panels = number_of_strings * panels_per_string
+        number_of_panels = initial_panel_count + 1
 
     else:
-        panels_per_string = number_of_panels
-        number_of_strings = 1
-        total_string_panels = number_of_panels
 
-    # Use the configured string arrangement for installed capacity.
+        number_of_panels = initial_panel_count
+
+
+    # Minimum 2 panels for prototype configuration
+    if number_of_panels < 2:
+
+        number_of_panels = 2
+
+
+    # ---------------------------------------------------------
+    # Automatically select an EVEN number of parallel strings
+    # ---------------------------------------------------------
+
+    possible_strings = [
+        2,
+        4,
+        6,
+        8
+    ]
+
+    parallel_strings = 2
+
+    for s in possible_strings:
+
+        if number_of_panels % s == 0:
+
+            parallel_strings = s
+
+            break
+
+
+    # Panels in series in each string
+    panels_per_string = (
+        number_of_panels // parallel_strings
+    )
+
+
+    # If series panels become too small,
+    # use 2 parallel strings
+    if panels_per_string < 2:
+
+        parallel_strings = 2
+
+        # Make total panels divisible by 2
+        if number_of_panels % 2 != 0:
+
+            number_of_panels += 1
+
+        panels_per_string = (
+            number_of_panels // parallel_strings
+        )
+
+
+    total_strings = parallel_strings
+
+
+    # Actual installed solar capacity
     actual_solar_capacity = round(
-        total_string_panels * panel_kw,
+        number_of_panels * panel_kw,
         2
     )
+
+
+    # =========================================================
+    # 4. ROOF AREA
+    # =========================================================
 
     area_per_panel = 2.2
 
@@ -146,7 +207,14 @@ if st.button("🔍 Analyze Solar System", use_container_width=True):
         number_of_panels * area_per_panel
     )
 
-    roof_status = roof_area >= required_roof_area
+    roof_status = (
+        roof_area >= required_roof_area
+    )
+
+
+    # =========================================================
+    # 5. INVERTER
+    # =========================================================
 
     inverter_size = round(
         actual_solar_capacity * 0.9,
@@ -154,9 +222,16 @@ if st.button("🔍 Analyze Solar System", use_container_width=True):
     )
 
     if inverter_size < 1:
+
         inverter_size = 1.0
 
+
+    # =========================================================
+    # 6. BATTERY
+    # =========================================================
+
     battery_efficiency = 0.90
+
     depth_of_discharge = 0.80
 
     usable_battery_energy = (
@@ -165,7 +240,10 @@ if st.button("🔍 Analyze Solar System", use_container_width=True):
 
     battery_capacity = (
         usable_battery_energy /
-        (battery_efficiency * depth_of_discharge)
+        (
+            battery_efficiency *
+            depth_of_discharge
+        )
     )
 
     battery_capacity = round(
@@ -173,8 +251,23 @@ if st.button("🔍 Analyze Solar System", use_container_width=True):
         2
     )
 
-    monthly_bill = monthly_units * tariff
-    yearly_bill = monthly_bill * 12
+
+    # =========================================================
+    # 7. ELECTRICITY BILL
+    # =========================================================
+
+    monthly_bill = (
+        monthly_units * tariff
+    )
+
+    yearly_bill = (
+        monthly_bill * 12
+    )
+
+
+    # =========================================================
+    # 8. SOLAR GENERATION
+    # =========================================================
 
     monthly_solar_generation = (
         actual_solar_capacity
@@ -200,7 +293,14 @@ if st.button("🔍 Analyze Solar System", use_container_width=True):
         0
     )
 
-    yearly_consumption = monthly_units * 12
+
+    # =========================================================
+    # 9. SOLAR COVERAGE
+    # =========================================================
+
+    yearly_consumption = (
+        monthly_units * 12
+    )
 
     solar_coverage = (
         yearly_solar_generation /
@@ -217,8 +317,14 @@ if st.button("🔍 Analyze Solar System", use_container_width=True):
         1
     )
 
+
+    # =========================================================
+    # 10. SAVINGS
+    # =========================================================
+
     annual_solar_value = (
-        yearly_solar_generation * tariff
+        yearly_solar_generation *
+        tariff
     )
 
     annual_solar_value = min(
@@ -236,9 +342,17 @@ if st.button("🔍 Analyze Solar System", use_container_width=True):
         0
     )
 
+
+    # =========================================================
+    # 11. SYSTEM COST
+    # =========================================================
+
     solar_cost_per_kw = 180000
+
     inverter_cost_per_kw = 70000
+
     battery_cost_per_kwh = 85000
+
 
     solar_cost = (
         actual_solar_capacity *
@@ -255,8 +369,11 @@ if st.button("🔍 Analyze Solar System", use_container_width=True):
         battery_cost_per_kwh
     )
 
+
     if system_type == "On-Grid":
+
         battery_cost = 0
+
 
     total_cost = (
         solar_cost +
@@ -269,13 +386,26 @@ if st.button("🔍 Analyze Solar System", use_container_width=True):
         0
     )
 
+
+    # =========================================================
+    # 12. PAYBACK
+    # =========================================================
+
     if annual_savings > 0:
+
         payback_years = round(
             total_cost / annual_savings,
             1
         )
+
     else:
+
         payback_years = 0
+
+
+    # =========================================================
+    # 13. CO2 REDUCTION
+    # =========================================================
 
     co2_factor = 0.4
 
@@ -294,187 +424,335 @@ if st.button("🔍 Analyze Solar System", use_container_width=True):
         2
     )
 
-    st.success("✅ Solar system analysis completed!")
 
-    st.header("📊 Recommended Solar System")
+    # =========================================================
+    # RESULTS
+    # =========================================================
+
+    st.success(
+        "✅ Solar system analysis completed!"
+    )
+
+
+    st.header(
+        "📊 Recommended Solar System"
+    )
+
 
     c1, c2, c3, c4 = st.columns(4)
+
 
     c1.metric(
         "☀️ Solar Size",
         f"{actual_solar_capacity:.2f} kW"
     )
 
+
     c2.metric(
         "🔆 Solar Panels",
         f"{number_of_panels}"
     )
+
 
     c3.metric(
         "⚡ Inverter",
         f"{inverter_size:.2f} kW"
     )
 
+
     if system_type == "On-Grid":
+
         c4.metric(
             "🔋 Battery",
             "Not Required"
         )
+
     else:
+
         c4.metric(
             "🔋 Battery",
             f"{battery_capacity:.2f} kWh"
         )
 
+
+    # =========================================================
+    # STRING CONFIGURATION
+    # =========================================================
+
     st.divider()
 
-    st.subheader("🔧 System Details")
+    st.subheader(
+        "🔗 Automatic Solar String Configuration"
+    )
 
-    d1, d2, d3, d4 = st.columns(4)
+
+    s1, s2, s3, s4 = st.columns(4)
+
+
+    s1.metric(
+        "Total Panels",
+        f"{number_of_panels}"
+    )
+
+
+    s2.metric(
+        "Panels in Series",
+        f"{panels_per_string}"
+    )
+
+
+    s3.metric(
+        "Parallel Strings",
+        f"{parallel_strings}"
+    )
+
+
+    s4.metric(
+        "Total Strings",
+        f"{total_strings}"
+    )
+
+
+    st.info(
+        f"🔧 Recommended Configuration: "
+        f"**{panels_per_string} panels in series × "
+        f"{parallel_strings} parallel strings**"
+    )
+
+
+    st.write(
+        f"☀️ **Panel Size:** {panel_power} W"
+    )
+
+    st.write(
+        f"🔗 **Series Connection:** "
+        f"{panels_per_string} panels are connected "
+        f"in series in each string."
+    )
+
+    st.write(
+        f"🔌 **Parallel Connection:** "
+        f"{parallel_strings} identical strings are "
+        f"connected in parallel."
+    )
+
+    st.write(
+        f"📦 **Total Panels:** "
+        f"{panels_per_string} × "
+        f"{parallel_strings} = "
+        f"**{number_of_panels} panels**"
+    )
+
+
+    st.warning(
+        "⚠️ String configuration is a preliminary "
+        "prototype recommendation. Final series/parallel "
+        "configuration must be verified using the selected "
+        "PV panel Voc/Vmp, Isc/Imp, inverter MPPT voltage "
+        "range, maximum DC voltage/current and temperature "
+        "conditions."
+    )
+
+
+    # =========================================================
+    # SYSTEM DETAILS
+    # =========================================================
+
+    st.divider()
+
+    st.subheader(
+        "🔧 System Details"
+    )
+
+
+    d1, d2, d3 = st.columns(3)
+
 
     d1.write(
         f"**Panel Size:** {panel_power} W"
     )
+
 
     d2.write(
         f"**Required Roof Area:** "
         f"{required_roof_area:.1f} m²"
     )
 
+
     d3.write(
         f"**Solar Coverage:** "
         f"{solar_coverage}%"
     )
 
-    d4.write(
-        f"**PV Strings:** {number_of_strings}"
-    )
-
-    st.info(
-        f"🔗 **PV String Configuration:** {panels_per_string} panel(s) "
-        f"in series per string × {number_of_strings} string(s) in parallel "
-        f"= {total_string_panels} configured panels."
-    )
-
-    if string_configuration == "Series strings in parallel":
-        st.success(
-            f"✅ Parallel string count: {number_of_strings} (EVEN)"
-        )
-    else:
-        st.info(
-            "ℹ️ Single series string selected; parallel-string even-count "
-            "rule does not apply."
-        )
 
     if roof_status:
+
         st.success(
             f"🏠 Roof area is sufficient. "
             f"Estimated required area: "
             f"{required_roof_area:.1f} m²."
         )
+
     else:
+
         st.warning(
             f"⚠️ Available roof area may be insufficient. "
             f"You have {roof_area:.1f} m² but approximately "
             f"{required_roof_area:.1f} m² may be required."
         )
 
+
+    # =========================================================
+    # SOLAR GENERATION
+    # =========================================================
+
     st.divider()
 
-    st.subheader("☀️ Estimated Solar Generation")
+    st.subheader(
+        "☀️ Estimated Solar Generation"
+    )
+
 
     g1, g2, g3 = st.columns(3)
+
 
     g1.metric(
         "Daily Consumption",
         f"{daily_consumption:.1f} kWh"
     )
 
+
     g2.metric(
         "Monthly Solar Generation",
         f"{monthly_solar_generation:,.0f} kWh"
     )
+
 
     g3.metric(
         "Yearly Solar Generation",
         f"{yearly_solar_generation:,.0f} kWh"
     )
 
+
+    # =========================================================
+    # FINANCIAL ANALYSIS
+    # =========================================================
+
     st.divider()
 
-    st.subheader("💰 Financial Analysis")
+    st.subheader(
+        "💰 Financial Analysis"
+    )
+
 
     f1, f2, f3, f4 = st.columns(4)
+
 
     f1.metric(
         "Monthly Bill",
         f"PKR {monthly_bill:,.0f}"
     )
 
+
     f2.metric(
         "Monthly Savings",
         f"PKR {monthly_savings:,.0f}"
     )
+
 
     f3.metric(
         "Estimated System Cost",
         f"PKR {total_cost:,.0f}"
     )
 
+
     f4.metric(
         "Payback Period",
         f"{payback_years} years"
     )
 
+
+    # =========================================================
+    # BATTERY
+    # =========================================================
+
     st.divider()
 
-    st.subheader("🔋 Battery Backup Analysis")
+    st.subheader(
+        "🔋 Battery Backup Analysis"
+    )
+
 
     st.write(
         f"**Required Backup Load:** "
         f"{essential_load:.2f} kW"
     )
 
+
     st.write(
         f"**Required Backup Time:** "
         f"{backup_hours:.1f} hours"
     )
 
+
     if system_type == "On-Grid":
+
         st.info(
-            "ℹ️ On-grid systems normally operate without "
-            "battery storage. Battery cost is excluded."
+            "ℹ️ On-grid systems normally operate "
+            "without battery storage. Battery cost "
+            "is excluded."
         )
+
     else:
+
         st.write(
             f"**Recommended Battery Capacity:** "
             f"{battery_capacity:.2f} kWh"
         )
 
+
+    # =========================================================
+    # ENVIRONMENTAL IMPACT
+    # =========================================================
+
     st.divider()
 
-    st.subheader("🌱 Environmental Impact")
+    st.subheader(
+        "🌱 Environmental Impact"
+    )
+
 
     e1, e2 = st.columns(2)
+
 
     e1.metric(
         "Annual CO₂ Avoided",
         f"{yearly_co2_reduction:,.0f} kg"
     )
 
+
     e2.metric(
         "Annual CO₂ Avoided",
         f"{yearly_co2_tonnes:.2f} tonnes"
     )
+
 
     st.write(
         "☘️ Solar energy can reduce dependence on grid "
         "electricity and associated carbon emissions."
     )
 
+
+    # =========================================================
+    # CHART
+    # =========================================================
+
     st.divider()
 
-    st.subheader("📈 Electricity vs Solar Generation")
+    st.subheader(
+        "📈 Electricity vs Solar Generation"
+    )
+
 
     chart_data = pd.DataFrame(
         {
@@ -489,23 +767,38 @@ if st.button("🔍 Analyze Solar System", use_container_width=True):
         ]
     )
 
-    st.bar_chart(chart_data)
+
+    st.bar_chart(
+        chart_data
+    )
+
+
+    # =========================================================
+    # SMART RECOMMENDATION
+    # =========================================================
 
     st.divider()
 
-    st.subheader("🤖 Smart Solar Recommendation")
+    st.subheader(
+        "🤖 Smart Solar Recommendation"
+    )
+
 
     if system_type == "On-Grid":
+
         battery_text = (
             "Battery storage is not included because "
             "the selected system is On-Grid."
         )
+
     else:
+
         battery_text = (
             f"Approximately {battery_capacity:.2f} kWh "
             f"battery capacity is recommended for the "
             f"required backup."
         )
+
 
     recommendation = f"""
 For {location}, based on the entered electricity consumption,
@@ -515,11 +808,12 @@ is recommended.
 The system can use approximately {number_of_panels} solar panels
 of {panel_power} W each.
 
-A {inverter_size:.2f} kW inverter is recommended.
+The recommended preliminary string configuration is:
 
-The PV array is configured as {panels_per_string} panel(s) in series
-per string and {number_of_strings} string(s) in parallel, giving
-{total_string_panels} configured panels.
+{panels_per_string} panels in series ×
+{parallel_strings} parallel strings.
+
+A {inverter_size:.2f} kW inverter is recommended.
 
 {battery_text}
 
@@ -536,12 +830,21 @@ The system could avoid approximately
 {yearly_co2_tonnes:.2f} tonnes of CO₂ emissions per year.
 """
 
-    st.info(recommendation)
+
+    st.info(
+        recommendation
+    )
+
+
+    # =========================================================
+    # DISCLAIMER
+    # =========================================================
 
     st.caption(
         "⚠️ These are preliminary estimates for a prototype. "
         "Actual solar design depends on solar irradiation, "
-        "shading, orientation, tilt, equipment specifications, "
-        "electrical loads, battery chemistry, tariff structure "
-        "and detailed engineering analysis."
+        "shading, orientation, tilt, panel electrical "
+        "characteristics, inverter MPPT range, equipment "
+        "specifications, electrical loads, battery chemistry, "
+        "tariff structure and detailed engineering analysis."
     )
